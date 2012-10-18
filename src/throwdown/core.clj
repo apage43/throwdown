@@ -90,16 +90,14 @@
    (string? el) (despace el) 
    :else [:unknown-thing el]))
 
-(defn chapter-toc [procd]
-  {:pre [(map? procd)
-         (= :chapter (:type procd))]}
+(defn extract-toc [procd]
   (walk/postwalk
     (fn [pel]
       (if
         (and (map? pel)
-             (#{:section :chapter} (:type pel))) 
+             (#{:section :chapter :book :appendix :preface} (:type pel))) 
         (let [itms (filter #(and (map? %) (:name %)) (:content pel))]
-          (merge {:name (:name pel) 
+          (merge {:name (str (when (= :appendix (:type pel)) "Appendix: ") (:name pel)) 
                   :section (:id pel)}
                  (when (not (empty? itms)) {:items itms}))) 
         pel))
@@ -224,12 +222,8 @@
             fname (first (string/split (.getName file) #"\.")) 
             procd (process-file file)]
         (swap! processed assoc fname procd)
-        (walk/prewalk #(do
-                         (when (:id %) (swap! id-index assoc (:id %) {:file fname :text (:name %)}))
-                         (when (= :chapter (:type %))
-                           (swap! toc conj (assoc (chapter-toc %)
-                                                  :root (str outdir "/" fname))))
-                         %) procd)))
+        (swap! toc conj (assoc (extract-toc procd) :root (str outdir "/" fname)))
+        (walk/prewalk #(do (when (:id %) (swap! id-index assoc (:id %) {:file fname :text (:name %)})) %) procd)))
     (doseq [[fname procd] @processed]
       (let [mdfile (io/file (str outdir "/" fname ".md"))]
         (println "Writing" fname)
