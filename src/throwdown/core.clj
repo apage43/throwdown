@@ -4,6 +4,7 @@
             [clojure.pprint :refer [pprint]]
             [clojure.string :as string]
             [clojure.walk :as walk]
+            [clj-yaml.core :as yaml]
             [clojure.data.xml :as xml])
   (:gen-class))
 
@@ -18,6 +19,10 @@
                      (if (instance? clojure.data.xml.Element %)
                        (:content %) %)) el)
     (despace (string/join " " (persistent! texts)))))
+
+(defn el-text-raw [el]
+  (apply str (flatten (walk/prewalk #(if (instance? clojure.data.xml.Element %)
+                                       (:content %) %) el))))
 
 (defn select [el pred]
   (let [results (transient [])]
@@ -54,7 +59,7 @@
 
                :programlisting (merge (:attrs el)
                                       {:type :code
-                                       :code (apply str (:content el))}) 
+                                       :code (el-text-raw el)}) 
                ; TODO find some way to deal with these extra class types
                ; Markdown will not render markdown in block-level elements, but
                ; these would be <div> classes. :/
@@ -133,7 +138,11 @@
 (defn mdprint [el opts]
   (cond (map? el) (case (:type el)
                     (:chapter :section :book)
-                      (doseq [e (:content el)] (mdprint e (assoc opts :level (:type el))))
+                    (do
+                      ; HACK! Emit an HTML ID'd empty anchor for xref links
+                      (println (str "<a id=\"" (:id el) "\"></a>\n")) 
+                      (doseq [e (:content el)]
+                        (mdprint e (assoc opts :level (:type el))))) 
 
                     (:example :warning :note)
                       (doseq [e (:content el)] (mdprint e (assoc opts :class (:type el))))
@@ -178,7 +187,8 @@
   [outdir & args]
   (let [processed (atom {})
         toc (atom [])
-        id-index (atom {})]
+        id-index (atom {})
+        frontmatter {:toc outdir}]
     (doseq [f args] 
       (println "Processing" f)
       (let [file (io/file f)
@@ -190,7 +200,7 @@
                            (when (:id %) (assoc! fileidx (:id %) {:file fname :text (:name %)}))
                            (when (= :chapter (:type %))
                              (swap! toc conj (assoc (chapter-toc %)
-                                                    :root fname)))
+                                                    :root (str outdir "/" fname))))
                            %) procd)
           (swap! id-index merge (persistent! fileidx)))))
     (doseq [[fname procd] @processed]
@@ -199,5 +209,8 @@
         (io/make-parents mdfile)
         (with-open [mdwriter (io/writer mdfile)]
           (binding [*out* mdwriter]
+            (println (str"---\n" (yaml/generate-string frontmatter) "\n---\n"))
             (mdprint procd {:xref-index @id-index})))))
+    (spit (str outdir "/" outdir ".yml")
+          (yaml/generate-string [{:name outdir :items @toc :root outdir}]))
     (pprint @toc)))
