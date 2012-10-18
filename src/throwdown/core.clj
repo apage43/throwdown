@@ -9,7 +9,10 @@
   (:gen-class))
 
 (defn despace [s]
-  (string/trim (string/join " " (map string/trim (string/split-lines s)))))
+  (string/replace
+    (string/trim (string/join " " (map string/trim (string/split-lines s))))
+    #" [.,]"
+    #(subs % 1)))
 
 (def tab-stop 4)
 
@@ -41,40 +44,44 @@
  (cond
    (map? el) (case (:tag el)
                ;section-like elements
-               (:chapter :book :section :appendix)
+               (:chapter :book :section :appendix :preface)
                (merge (:attrs el)
                       {:type (:tag el)
                        :name (el-text (first (select-tagname el :title)))
                        :content (map process (:content el))}) 
                
                :orderedlist {:type :olist
-                             :content (map (comp process first :content) (:content el))}
+                             :content (map #(map process (:content %)) (:content el))}
                :itemizedlist {:type :list
-                              :content (map (comp process first :content) (:content el))}
+                             :content (map #(map process (:content %)) (:content el))}
 
                :para {:type :para :content (map process (:content el))} 
 
                :ulink {:type :link :text (el-text el) :href (-> el :attrs :url)}
                :xref [:xref (-> el :attrs :linkend)]
 
-               :figure {:type :image
+               (:figure :mediaobject) {:type :image
                         :alt (el-text (select-tagname el :title))
                         :href (-> (select-tagname el :imagedata) first :attrs :fileref) }
 
                :programlisting (merge (:attrs el)
                                       {:type :code
                                        :code (el-text-raw el)}) 
+
                ; TODO find some way to deal with these extra class types
                ; Markdown will not render markdown in block-level elements, but
                ; these would be <div> classes. :/
-               (:example :warning :note) {:type (:tag el) :content (map process (:content el))} 
+               ; Non-titled section-like elements
+               (:example :warning :note :formalpara :bookinfo :abstract :legalnotice :corpauthor) 
+               {:type :div :class (:tag el) :content (map process (:content el))} 
 
                ; inline code type elements
-               (:guilabel :command :filename :literal :option :methodname :replaceable)
-               [:inline-code (el-text el)]
+               ; Could affix <span> classes to these if we wanted
+               (:guilabel :command :filename :literal :option :methodname :replaceable :function :userinput)
+               {:type :inline-code :code (el-text el) :class (:tag el)}
                
                :emphasis (case (-> el :attrs :role)
-                           :bold [:bold (el-text el)]
+                           "bold" [:bold (el-text el)]
                            [:em (el-text el)]) 
 
                :title [:title (el-text el)] 
@@ -105,72 +112,82 @@
     "" (println) ; Don't indent empty lines
     (println (str (apply str (repeat in " ")) s))))
 
-(defn print-code [s & [lang]]
-  (let [code-lines (drop-while (partial = "") (string/split-lines s)) 
+(defn reindented-print [in s]
+  (let [lines (drop-while (partial = "") (string/split-lines s)) 
         orig-indent (apply min 1000 (map #(count (take-while (partial = \space) %)) 
-                                         (filter (complement string/blank?) code-lines)))]
-    (when lang
-      (indented-println 4 (str "`" lang)))
-    (doseq [cl code-lines]
-      (indented-println 4 (string/trimr (apply str (drop orig-indent cl)))))))
+                                         (filter (complement string/blank?) lines)))]
+    (doseq [cl lines]
+      (indented-println in (string/trimr (apply str (drop orig-indent cl)))))))
+
+(defn print-code [s & [lang]]
+  (when lang (indented-println 4 (str "`" lang)))
+  (reindented-print 4 s))
 
 (defn code-escape [s]
   (string/escape s {\` "\\`"}))
 
 (defn text-escape [s]
-  (let [escaped
-        (string/escape s {\* "\\*"
-                          \_ "\\_"
-                          \# "\\#"
-                          \[ "\\["
-                          \] "\\]"})] 
-    (if (= \: (first escaped))
-      (str "\\:" (subs escaped 1))
-      escaped)))
+  (string/escape s {\* "\\*"
+                    \_ "\\_"
+                    \# "\\#"
+                    \[ "\\[" 
+                    \] "\\]"}))
+
+(defn para-escape 
+  "Paragraphs don't like starting with a colon"
+  [s] (if (= (first s) \:) (str "\\:" (subs s 1)) s))
 
 (declare mdprint)
 
-(defn print-list [indent-init els bullets opts]
+(defn print-list [els bullets opts]
   (loop [el-list els
          bulls bullets]
     (when-not (empty? el-list)
       (let [bullet (first bulls)
             el (first el-list)]
-        (indented-println
-          indent-init
-          (str bullet (with-out-str
-                        (mdprint el (assoc opts :indent (+ indent-init (count bullet)))))))) 
-      (recur (rest el-list) (rest bulls))))
-  (println))
+        (println
+          (str bullet
+               (subs
+                 (with-out-str 
+                   (reindented-print
+                     (count bullet) 
+                     (with-out-str
+                       (doseq [ie el]
+                         (mdprint ie opts)))))
+                 (count bullet)))))
+      (recur (rest el-list) (rest bulls)))))
 
 (defn mdprint [el opts]
   (cond (map? el) (case (:type el)
-                    (:chapter :section :book)
+                    (:chapter :section :book :appendix :preface)
                     (do
-                      ; HACK! Emit an HTML ID'd empty anchor for xref links
-                      (println (str "<a id=\"" (:id el) "\"></a>\n")) 
+                      ; Emit an HTML ID'd empty anchor for xref links
+                      (when (:id el) (println (str "<a id=\"" (:id el) "\"></a>\n"))) 
                       (doseq [e (:content el)]
                         (mdprint e (assoc opts :level (:type el))))) 
 
-                    (:example :warning :note)
-                      (doseq [e (:content el)] (mdprint e (assoc opts :class (:type el))))
+                    :div
+                    (doseq [e (:content el)] (mdprint e (assoc opts :class (:class el))))
 
                     :link (print (str " [" (text-escape (:text el)) "](" (:href el) ") ")) 
                     :image (println (str "\n![" (text-escape (:alt el)) "](" (:href el) ")\n")) 
-                    :list (print-list (:indent opts 0) (:content el) (repeat " * ") opts) 
-                    :olist (print-list (:indent opts 0) (:content el)
-                                       (map #(str " " % ". ") (iterate inc 1)) opts)
+                    :list (print-list (:content el) (repeat " *  ") opts) 
+                    :olist (print-list (:content el)
+                                       (map #(str " " % ".  ") (iterate inc 1)) opts)
                     :code (do
                             (print-code (:code el) (:language el))
                             (println))
                     :para (do
-                            (println (despace (with-out-str (doseq [e (:content el)] (mdprint e opts)))))
+                            (println (para-escape
+                                       (despace (with-out-str (doseq [e (:content el)] (mdprint e opts))))))
                             (when-not (:indent opts) (println))) 
+
+                    :inline-code (print (str " `" (:code el) "` "))
+
                     (doseq [e (:content el)]
                       (print (str " **Unhandled containery thing:** `" (:type el) "` "))
                       (mdprint e opts)))
         (vector? el) (case (first el)
-                       :inline-code (print (str " `" (second el) "` "))
                        :em (print (str " *" (text-escape (second el)) "* "))
                        :bold (print (str " **" (text-escape (second el)) "** "))
 
@@ -179,9 +196,13 @@
                                  (print (str " [" (:text xitem)"](" (:file xitem) ".html#" (second el) ") "))
                                  (print (str " **Couldn't resolve xref tag: " (second el) "** "))))
 
-                       :title (condp = (:class opts)
-                                :example (println (str "### `" (second el) "`\n"))
-                                (println (str ({:book "#" :chapter "#" :section "##"} (:level opts))
+                       :title (if (:class opts)
+                                (println (str "### `" (second el) "`\n"))
+                                (println (str ({:book "#"
+                                                :chapter "#"
+                                                :section "##"
+                                                :preface "##"
+                                                :appendix "#Appendix: "} (:level opts))
                                               (second el) "\n"))) 
                        (print (str " **Unhandled:** `" (pr-str el) "` ")))
         (string? el) (print (text-escape el))
@@ -209,15 +230,14 @@
                            (swap! toc conj (assoc (chapter-toc %)
                                                   :root (str outdir "/" fname))))
                          %) procd)))
-    (pprint @id-index)
     (doseq [[fname procd] @processed]
       (let [mdfile (io/file (str outdir "/" fname ".md"))]
-        ;(spit (str outdir "/" fname ".dbgir") (with-out-str (pprint procd)))  ;debugging
+        (println "Writing" fname)
+        ; (spit (str outdir "/" fname ".dbgir") (with-out-str (pprint procd)))  ;debugging
         (io/make-parents mdfile)
         (with-open [mdwriter (io/writer mdfile)]
           (binding [*out* mdwriter]
             (println (str"---\n" (yaml/generate-string frontmatter) "\n---\n"))
             (mdprint procd {:xref-index @id-index})))))
     (spit (str outdir "/" outdir ".yml")
-          (yaml/generate-string [{:name outdir :items @toc :root outdir}]))
-    (pprint @id-index)))
+          (yaml/generate-string [{:name outdir :items @toc :root outdir}]))))
