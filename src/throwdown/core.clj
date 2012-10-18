@@ -11,6 +11,8 @@
 (defn despace [s]
   (string/trim (string/join " " (map string/trim (string/split-lines s)))))
 
+(def tab-stop 4)
+
 ;; XML translation to internal intermediate representation
 
 (defn el-text [el]
@@ -21,8 +23,10 @@
     (despace (string/join " " (persistent! texts)))))
 
 (defn el-text-raw [el]
-  (apply str (flatten (walk/prewalk #(if (instance? clojure.data.xml.Element %)
-                                       (:content %) %) el))))
+  (string/replace 
+    (apply str (flatten (walk/prewalk #(if (instance? clojure.data.xml.Element %)
+                                         (:content %) %) el)))
+    "\t" (apply str (take tab-stop (repeat \space))) ))
 
 (defn select [el pred]
   (let [results (transient [])]
@@ -103,8 +107,8 @@
 
 (defn print-code [s & [lang]]
   (let [code-lines (drop-while (partial = "") (string/split-lines s)) 
-        orig-indent (apply min (map #(count (take-while (partial = \space) %)) 
-                                    (filter (complement string/blank?) code-lines)))]
+        orig-indent (apply min 1000 (map #(count (take-while (partial = \space) %)) 
+                                         (filter (complement string/blank?) code-lines)))]
     (when lang
       (indented-println 4 (str "`" lang)))
     (doseq [cl code-lines]
@@ -114,11 +118,15 @@
   (string/escape s {\` "\\`"}))
 
 (defn text-escape [s]
-  (string/escape s {\* "\\*"
-                    \_ "\\_"
-                    \# "\\#"
-                    \[ "\\["
-                    \] "\\]" }))
+  (let [escaped
+        (string/escape s {\* "\\*"
+                          \_ "\\_"
+                          \# "\\#"
+                          \[ "\\["
+                          \] "\\]"})] 
+    (if (= \: (first escaped))
+      (str "\\:" (subs escaped 1))
+      escaped)))
 
 (declare mdprint)
 
@@ -168,7 +176,7 @@
 
                        :xref (let [xitem ((:xref-index opts) (second el))]
                                (if xitem
-                                 (print (str " [" (:text xitem)"](" (:file xitem) ".html) "))
+                                 (print (str " [" (:text xitem)"](" (:file xitem) ".html#" (second el) ") "))
                                  (print (str " **Couldn't resolve xref tag: " (second el) "** "))))
 
                        :title (condp = (:class opts)
@@ -195,14 +203,13 @@
             fname (first (string/split (.getName file) #"\.")) 
             procd (process-file file)]
         (swap! processed assoc fname procd)
-        (let [fileidx (transient {})]
-          (walk/prewalk #(do
-                           (when (:id %) (assoc! fileidx (:id %) {:file fname :text (:name %)}))
-                           (when (= :chapter (:type %))
-                             (swap! toc conj (assoc (chapter-toc %)
-                                                    :root (str outdir "/" fname))))
-                           %) procd)
-          (swap! id-index merge (persistent! fileidx)))))
+        (walk/prewalk #(do
+                         (when (:id %) (swap! id-index assoc (:id %) {:file fname :text (:name %)}))
+                         (when (= :chapter (:type %))
+                           (swap! toc conj (assoc (chapter-toc %)
+                                                  :root (str outdir "/" fname))))
+                         %) procd)))
+    (pprint @id-index)
     (doseq [[fname procd] @processed]
       (let [mdfile (io/file (str outdir "/" fname ".md"))]
         ;(spit (str outdir "/" fname ".dbgir") (with-out-str (pprint procd)))  ;debugging
@@ -213,4 +220,4 @@
             (mdprint procd {:xref-index @id-index})))))
     (spit (str outdir "/" outdir ".yml")
           (yaml/generate-string [{:name outdir :items @toc :root outdir}]))
-    (pprint @toc)))
+    (pprint @id-index)))
