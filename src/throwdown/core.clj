@@ -40,6 +40,17 @@
 (defn select-tagname [el tagname]
   (select el (comp (partial = tagname) :tag)))
 
+(declare process)
+
+(defn process-table [el]
+  (let [body (first (select-tagname el :tbody))
+        head (first (select-tagname el :thead))
+        rowlist (map (fn [r] (mapv #(map process (:content %)) (:content r))) (:content body))
+        headrow (when head (mapv #(map process (:content %)) (-> head :content first :content)))]
+    {:type :table
+     :head (or headrow (first rowlist))
+     :rows (if headrow rowlist (rest rowlist))}))
+
 (defn process [el]
  (cond
    (map? el) (case (:tag el)
@@ -64,6 +75,8 @@
                         :alt (el-text (select-tagname el :title))
                         :href (-> (select-tagname el :imagedata) first :attrs :fileref) }
 
+               (:table :informaltable) (process-table el)
+
                :programlisting (merge (:attrs el)
                                       {:type :code
                                        :code (el-text-raw el)}) 
@@ -72,7 +85,7 @@
                ; Markdown will not render markdown in block-level elements, but
                ; these would be <div> classes. :/
                ; Non-titled section-like elements
-               (:example :warning :note :formalpara :bookinfo :abstract :legalnotice :corpauthor) 
+               (:example :warning :tip :note :formalpara :bookinfo :abstract :legalnotice :corpauthor) 
                {:type :div :class (:tag el) :content (map process (:content el))} 
 
                ; inline code type elements
@@ -137,6 +150,28 @@
 
 (declare mdprint)
 
+(defn table-row-printify [r]
+  (mapv (fn [ri]
+          (despace (with-out-str
+                     (doseq [rel ri] (mdprint rel {}))))) r))
+
+(defn print-mdtable [el]
+  (let [printable-head (table-row-printify (:head el))
+        printable-rows (map table-row-printify (:rows el))
+        printable-all (conj printable-rows printable-head)
+        widths (map (fn [hidx]
+                      (apply max (count (printable-head hidx))
+                             (map #(count (% hidx)) printable-rows))) (range (count printable-head)))
+        fmts (map #(str "%-" % "s") widths)
+        fmt-row (fn [row]
+                  (apply str (interpose " | " (map (fn [fmt td] (format fmt td)) fmts row))))
+        separator (apply str (interpose "-|-" (map #(apply str (repeat % \-)) widths)))]
+
+    (println (fmt-row printable-head))
+    (println separator)
+    (doseq [r printable-rows] (println (fmt-row r)))
+    (println)))
+
 (defn print-list [els bullets opts]
   (loop [el-list els
          bulls bullets]
@@ -178,7 +213,9 @@
                     :para (do
                             (println (para-escape
                                        (despace (with-out-str (doseq [e (:content el)] (mdprint e opts))))))
-                            (when-not (:indent opts) (println))) 
+                            (println)) 
+
+                    :table (print-mdtable el)
 
                     :inline-code (print (str " `" (:code el) "` "))
 
@@ -227,7 +264,7 @@
     (doseq [[fname procd] @processed]
       (let [mdfile (io/file (str outdir "/" fname ".md"))]
         (println "Writing" fname)
-        ; (spit (str outdir "/" fname ".dbgir") (with-out-str (pprint procd)))  ;debugging
+        ;(spit (str outdir "/" fname ".dbgir") (with-out-str (pprint procd)))  ;debugging
         (io/make-parents mdfile)
         (with-open [mdwriter (io/writer mdfile)]
           (binding [*out* mdwriter]
