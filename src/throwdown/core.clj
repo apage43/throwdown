@@ -120,6 +120,23 @@
 
 ;; Markdown Printing
 
+(defn code-escape [s]
+  (string/escape s {\` "\\`"}))
+
+(defn text-escape [s]
+  (string/escape s {\* "\\*"
+                    \_ "\\_"
+                    \# "\\#"
+                    \[ "\\[" 
+                    \] "\\]"}))
+
+(defn para-escape 
+  [s] (if-not (empty? s)
+        (str
+          (string/escape (subs s 0 1)
+                         {\> "\\>"
+                          \: "\\:"}) (subs s 1)) ""))
+
 (def wrap-buffer (StrBuilder.))
 (def wrap-column 80)
 
@@ -128,7 +145,7 @@
     (apply clojure.core/print args)))
 
 (defn pflush []
-  (clojure.core/print (WordUtils/wrap (despace (str wrap-buffer)) wrap-column))
+  (clojure.core/print (WordUtils/wrap (despace (para-escape (str wrap-buffer))) wrap-column))
   (.clear wrap-buffer))
 
 (defn println [& args]
@@ -150,23 +167,6 @@
 (defn print-code [s & [lang]]
   (when lang (indented-println 4 (str "`" lang)))
   (reindented-print 4 s))
-
-(defn code-escape [s]
-  (string/escape s {\` "\\`"}))
-
-(defn text-escape [s]
-  (string/escape s {\* "\\*"
-                    \_ "\\_"
-                    \# "\\#"
-                    \[ "\\[" 
-                    \] "\\]"}))
-
-(defn para-escape 
-  [s] (str
-        (string/escape (subs s 0 1)
-                       {\* "\\*"
-                        \> "\\>"
-                        \: "\\:"}) (subs s 1)) )
 
 (declare mdprint)
 
@@ -243,11 +243,10 @@
                               (println))
 
                       :para (do
-                              (println (para-escape
-                                         (with-out-str 
+                              (println (with-out-str 
                                            (doseq [e (:content el)]
                                              (mdprint e (assoc opts :in-para true)))
-                                           (println)))))
+                                           (println))))
 
                       :xlink (let [xitem ((:xref-index opts) (:linkend el))]
                                (if xitem
