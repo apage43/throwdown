@@ -112,7 +112,7 @@
         (let [itms (filter #(and (map? %) (:name %)) (:content pel))]
           (merge {:name (str (when (= :appendix (:type pel)) "Appendix: ") (:name pel)) 
                   :section (:id pel)}
-                 (when (not (empty? itms)) {:items itms}))) 
+                 (when (seq itms) {:items itms}))) 
         pel))
     procd))
 
@@ -222,6 +222,7 @@
                               (when (:in-para opts) (println))
                               (print-code (:code el) (:language el))
                               (println))
+
                       :para (do
                               (println (para-escape
                                          (with-out-str (doseq [e (:content el)] (mdprint e (assoc opts :in-para true))))))
@@ -252,10 +253,10 @@
 
                        :title (if (:class opts)
                                 (println (str "### `" (second el) "`\n"))
-                                (println (str ({:book "#"
-                                                :chapter "#"
-                                                :section "##"
-                                                :preface "##"
+                                (println (str ({:book "# "
+                                                :chapter "# "
+                                                :section "## "
+                                                :preface "## "
                                                 :appendix "#Appendix: "} (:level opts))
                                               (second el) "\n"))) 
                        (print (str " **Unhandled:** `" (pr-str el) "` ")))
