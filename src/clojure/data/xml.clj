@@ -284,14 +284,7 @@
       (.setProperty fac prop v))
     fac))
 
-(def factorycache (atom {}))
-
-(defn xml-input-factory [props] 
-  (let [cached (@factorycache props)]
-    (if cached cached 
-      (let [newfact (new-xml-input-factory props)]
-        (swap! factorycache assoc props newfact)
-        newfact))))
+(def xml-input-factory (memoize new-xml-input-factory))
 
 (defn source-seq
   "Parses the XML InputSource source using a pull-parser. Returns
