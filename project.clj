@@ -7,6 +7,6 @@
                  ; Woodstox is faster than the Stax impl shipped with JDK, and
                  ; will cache DTDs and other resources
                  [org.codehaus.woodstox/woodstox-core-asl "4.1.4"]
-                 [cheshire "4.0.3"]
+                 [org.apache.commons/commons-lang3 "3.1"]
                  [clj-yaml "0.4.0"]]
   :main throwdown.core)

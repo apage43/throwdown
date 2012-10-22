@@ -1,5 +1,7 @@
 (ns throwdown.core
-  (:import [javax.xml.transform.stream StreamSource])
+  (:import [javax.xml.transform.stream StreamSource] 
+           [org.apache.commons.lang3.text WordUtils StrBuilder])
+  (:refer-clojure :exclude [print println])
   (:require [clojure.java.io :as io]
             [clojure.pprint :refer [pprint]]
             [clojure.string :as string]
@@ -118,6 +120,21 @@
 
 ;; Markdown Printing
 
+(def wrap-buffer (StrBuilder.))
+(def wrap-column 80)
+
+(defn print [& args]
+  (binding [*out* (.asWriter wrap-buffer)]
+    (apply clojure.core/print args)))
+
+(defn pflush []
+  (clojure.core/print (WordUtils/wrap (despace (str wrap-buffer)) wrap-column))
+  (.clear wrap-buffer))
+
+(defn println [& args]
+  (pflush)
+  (apply clojure.core/println args))
+
 (defn indented-println [in s]
   (case s 
     "" (println) ; Don't indent empty lines
@@ -156,7 +173,8 @@
 (defn table-row-printify [r opts]
   (mapv (fn [ri]
           (despace (with-out-str
-                     (doseq [rel ri] (mdprint rel opts))))) r))
+                     (doseq [rel ri] (mdprint rel opts))
+                     (pflush)))) r))
 
 (defn print-mdtable [el opts]
   (let [printable-head (table-row-printify (:head el) opts)
@@ -188,7 +206,8 @@
                      (count bullet) 
                      (with-out-str
                        (doseq [ie el]
-                         (mdprint ie opts)))))
+                         (mdprint ie opts))
+                       (pflush))))
                  (count bullet)))))
       (recur (rest el-list) (rest bulls)))))
 
@@ -225,13 +244,17 @@
 
                       :para (do
                               (println (para-escape
-                                         (with-out-str (doseq [e (:content el)] (mdprint e (assoc opts :in-para true))))))
-                              (println)) 
+                                         (with-out-str 
+                                           (doseq [e (:content el)]
+                                             (mdprint e (assoc opts :in-para true)))
+                                           (println)))))
 
                       :xlink (let [xitem ((:xref-index opts) (:linkend el))]
                                (if xitem
                                  (print (str " [" (despace
-                                                    (with-out-str (doseq [e (:content el)] (mdprint e opts)))) 
+                                                    (with-out-str
+                                                      (doseq [e (:content el)] (mdprint e opts))
+                                                      (pflush))) 
                                              "](" (xurl xitem (:linkend el) opts) ") "))
                                  (print (str " **Couldn't resolve link tag: " (text-escape (:linkend el)) "** "))))
 
