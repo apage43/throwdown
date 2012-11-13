@@ -160,7 +160,7 @@
 (defn reindented-print [in s]
   (let [lines (drop-while (partial = "") (string/split-lines s)) 
         orig-indent (apply min 1000 (map #(count (take-while (partial = \space) %)) 
-                                         (filter (complement string/blank?) lines)))]
+                                         (remove string/blank? lines)))]
     (doseq [cl lines]
       (indented-println in (string/trimr (apply str (drop orig-indent cl)))))))
 
@@ -185,8 +185,8 @@
                              (map #(count (% hidx)) printable-rows))) (range (count printable-head)))
         fmts (map #(str "%-" % "s") widths)
         fmt-row (fn [row]
-                  (apply str (interpose " | " (map (fn [fmt td] (format fmt td)) fmts row))))
-        separator (apply str (interpose "-|-" (map #(apply str (repeat % \-)) widths)))]
+                  (string/join " | " (map format fmts row)))
+        separator (string/join "-|-" (map #(apply str (repeat % \-)) widths))]
     (println (fmt-row printable-head))
     (println separator)
     (doseq [r printable-rows] (println (fmt-row r)))
@@ -195,7 +195,7 @@
 (defn print-list [els bullets opts]
   (loop [el-list els
          bulls bullets]
-    (when-not (empty? el-list)
+    (when (seq el-list)
       (let [bullet (first bulls)
             el (first el-list)]
         (println
@@ -224,9 +224,8 @@
                       :comment nil
 
                       (:chapter :section :book :appendix :preface)
-                      (do
-                        (doseq [e (:content el)]
-                          (mdprint e (assoc opts :level (:type el))))) 
+                      (doseq [e (:content el)]
+                        (mdprint e (assoc opts :level (:type el))))
 
                       :div
                       (doseq [e (:content el)] (mdprint e (assoc opts :class (:class el))))
@@ -242,11 +241,10 @@
                               (print-code (:code el) (:language el))
                               (println))
 
-                      :para (do
-                              (println (with-out-str 
-                                           (doseq [e (:content el)]
-                                             (mdprint e (assoc opts :in-para true)))
-                                           (println))))
+                      :para (println (with-out-str 
+                                       (doseq [e (:content el)]
+                                         (mdprint e (assoc opts :in-para true)))
+                                       (println)))
 
                       :xlink (let [xitem ((:xref-index opts) (:linkend el))]
                                (if xitem
@@ -259,7 +257,7 @@
 
                       :table (print-mdtable el opts)
 
-                      :inline-code (when-not (empty? (:code el)) (print (str " `" (:code el) "` "))) 
+                      :inline-code (when (seq (:code el)) (print (str " `" (:code el) "` "))) 
 
                       (doseq [e (:content el)]
                         (print (str " **Unhandled containery thing:** `" (:type el) "` "))
