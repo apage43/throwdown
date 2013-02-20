@@ -1,3 +1,6 @@
+.DS_Store
+.lein-repl-history
+/contents
 /target
 /lib
 /classes

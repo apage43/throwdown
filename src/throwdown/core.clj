@@ -1,14 +1,15 @@
 (ns throwdown.core
-  (:import [javax.xml.transform.stream StreamSource] 
+  (:import [javax.xml.transform.stream StreamSource]
            [org.apache.commons.lang3.text WordUtils StrBuilder])
   (:refer-clojure :exclude [print println])
   (:require [clojure.java.io :as io]
             [clojure.pprint :refer [pprint]]
             [clojure.string :as string]
             [clojure.walk :as walk]
-            [clj-yaml.core :as yaml]
             [clojure.data.xml :as xml])
   (:gen-class))
+
+(def opts (atom {}))
 
 (defn despace [s]
   (string/replace
@@ -21,7 +22,7 @@
 ;; XML translation to internal intermediate representation
 
 (defn el-text-raw [el]
-  (string/replace 
+  (string/replace
     (apply str
            (filter string?
                    (tree-seq :content :content el)))
@@ -49,16 +50,22 @@
        :rows (if headrow rowlist (rest rowlist))}
       (when-let [id (-> el :attrs :id)] {:id id}))))
 
+(def kill-ids
+  #{"conventions"
+    "api-reference-summary"
+    "contributing"})
+
 (defn process [el]
- (cond
-   (map? el) (case (:tag el)
-               ;section-like elements
-               (:chapter :book :section :appendix :preface)
-               (merge (:attrs el)
-                      {:type (:tag el)
-                       :name (el-text (first (select-tagname el :title)))
-                       :content (map process (:content el))}) 
-               
+  (cond
+    (map? el) (case (:tag el)
+                ;section-like elements
+                (:chapter :book :section :appendix :preface)
+                (if (kill-ids (:id (:attrs el))) ""
+                  (merge (:attrs el)
+                         {:type (:tag el)
+                          :name (el-text (first (select-tagname el :title)))
+                          :content (map process (:content el))})) 
+
                :orderedlist {:type :olist
                              :content (map #(map process (:content %)) (:content el))}
                (:simplelist :itemizedlist) {:type :list
@@ -83,18 +90,22 @@
 
                :remark {:type :comment :attrs (:attrs el)}
 
+               ; KILL these!
+               (:bookinfo)
+               ""
+
                ; TODO find some way to deal with these extra class types
                ; Markdown will not render markdown in block-level elements, but
                ; these would be <div> classes. :/
                ; Non-titled section-like elements
-               (:example :warning :tip :note :formalpara :bookinfo :abstract :legalnotice :corpauthor) 
-               {:type :div :class (:tag el) :content (map process (:content el))} 
+               (:example :warning :tip :note :formalpara :abstract :legalnotice :corpauthor)
+               {:type :div :class (:tag el) :content (map process (:content el))}
 
                ; inline code type elements
                ; Could affix <span> classes to these if we wanted
                (:guilabel :command :filename :literal :option :methodname :replaceable :function :userinput)
                {:type :inline-code :code (el-text el) :class (:tag el)}
-               
+
                :emphasis (case (-> el :attrs :role)
                            "bold" [:bold (el-text el)]
                            [:em (el-text el)]) 
@@ -153,20 +164,22 @@
   (apply clojure.core/println args))
 
 (defn indented-println [in s]
-  (case s 
+  (case s
     "" (println) ; Don't indent empty lines
     (println (str (apply str (repeat in " ")) s))))
 
 (defn reindented-print [in s]
   (let [lines (drop-while (partial = "") (string/split-lines s)) 
-        orig-indent (apply min 1000 (map #(count (take-while (partial = \space) %)) 
-                                         (remove string/blank? lines)))]
+        drop-indent (apply min 1000 (map #(count (take-while (partial = \space) %)) 
+                                         (remove string/blank? lines)))
+        lines (filter (partial not= "!NO-REINDENT") lines) ]
     (doseq [cl lines]
-      (indented-println in (string/trimr (apply str (drop orig-indent cl)))))))
+      (indented-println in (string/trimr (apply str (drop drop-indent cl)))))))
 
-(defn print-code [s & [lang]]
-  (when lang (indented-println 4 (str "`" lang)))
-  (reindented-print 4 s))
+(defn print-code [code & [lang]]
+  (println (str "```" (or (@opts :default-lang))))
+  (println code)
+  (println "```"))
 
 (declare mdprint)
 
@@ -206,7 +219,7 @@
                      (count bullet) 
                      (with-out-str
                        (doseq [ie el]
-                         (mdprint ie opts))
+                         (mdprint ie (assoc opts :in-list true)))
                        (pflush))))
                  (count bullet)))))
       (recur (rest el-list) (rest bulls)))))
@@ -215,6 +228,27 @@
   (str (if (not= (:file xitem) (:current-doc opts))
          (str (:file xitem) ".html") "")
        "#" sid))
+
+(def real-out (atom *out*))
+(defn debug [& args]
+  (binding [*out* @real-out] (apply println args)))
+
+(defn collect-image [href opts]
+  (let [src-file (io/file (:current-doc opts))
+        file-parent (.getParentFile src-file)
+        imagefile (java.io.File. file-parent (str "../../../common/" href))
+        imagefile (if (.exists imagefile) imagefile (java.io.File. file-parent href))]
+    (if (.exists imagefile)
+      (let [destname (str "/media/"
+                          (:outname opts) "/images/"
+                          (.getName imagefile))
+            dest (io/file (str "templates" destname))]
+        (io/make-parents dest)
+        (io/copy imagefile dest)
+        (debug "Copied" imagefile "->" dest)
+        destname)
+      (do (debug "Couldn't find image" href)
+          "/media/bad.png"))))
 
 (defn mdprint [el opts]
   (cond (map? el) (do
@@ -225,20 +259,26 @@
 
                       (:chapter :section :book :appendix :preface)
                       (doseq [e (:content el)]
-                        (mdprint e (assoc opts :level (:type el))))
+                        (mdprint e (merge opts
+                                          {:level (:type el)
+                                           :depth (inc (or (:depth opts) 0))})))
 
                       :div
                       (doseq [e (:content el)] (mdprint e (assoc opts :class (:class el))))
 
                       :link (print (str " [" (text-escape (:text el)) "](" (:href el) ") ")) 
-                      :image (println (str "\n![" (text-escape (:alt el)) "](" (:href el) ")\n")) 
-                      :list (print-list (:content el) (repeat " *  ") opts) 
+                      :image (println (str "\n![" (text-escape (:alt el)) "]("
+                                           (collect-image (:href el) opts) ")\n"))
+                      :list (print-list (:content el) (repeat " * ") opts)
                       :olist (print-list (:content el)
-                                         (map #(str " " % ".  ") (iterate inc 1)) opts)
+                                         (repeat " 1. ") opts)
                       :code (do
-                              (println)
-                              (when (:in-para opts) (println))
-                              (print-code (:code el) (:language el))
+                              ;(when (:in-list opts) (println "!NO-REINDENT"))
+                              (when-not (:in-list opts) (println))
+                              ;(when (:in-para opts) (println))
+                              (reindented-print (if (:in-list opts) 1 0)
+                                                (with-out-str
+                                                  (print-code (:code el) (:language el))))
                               (println))
 
                       :para (println (with-out-str 
@@ -271,14 +311,18 @@
                                  (print (str " [" (:text xitem) "](" (xurl xitem (second el) opts) ") "))
                                  (print (str " **Couldn't resolve xref tag: " (text-escape (second el)) "** "))))
 
-                       :title (if (:class opts)
-                                (println (str "### `" (second el) "`\n"))
+                       :title (do (debug "Title: " (second el) ", depth: " (:depth opts))
+                               (if (:class opts)
+                                (println (str "### " (second el) "\n"))
                                 (println (str ({:book "# "
                                                 :chapter "# "
-                                                :section "## "
+                                                :section (let [d (or (:depth opts) 0)]
+                                                           (if (> d 3)
+                                                             "### "
+                                                             "## "))
                                                 :preface "## "
-                                                :appendix "#Appendix: "} (:level opts))
-                                              (second el) "\n"))) 
+                                                :appendix "# Appendix: "} (:level opts))
+                                              (second el) "\n")))) 
                        (print (str " **Unhandled:** `" (pr-str el) "` ")))
         (string? el) (print (text-escape el))
         :else (println "**Unhandled thing here**")))
@@ -288,29 +332,29 @@
     (process xml-tree)))
 
 (defn -main
-  [outdir & args]
+  [filename outname]
   (let [processed (atom {})
-        toc (atom [])
-        id-index (atom {})
-        frontmatter {:toc outdir}]
-    (doseq [f args] 
+        id-index (atom {})]
+    (reset! real-out *out*)
+    (try
+      (let [localopts (read-string (slurp ".throwdown-opts.clj"))]
+        (println "Found local options: " (pr-str localopts))
+        (reset! opts localopts))
+      (catch Exception e))
+    (let [f filename]
       (println "Processing" f)
       (let [file (io/file f)
             fname (first (string/split (.getName file) #"\.")) 
             procd (process-file file)]
         (swap! processed assoc fname procd)
-        (swap! toc conj (assoc (extract-toc procd) :root (str outdir "/" fname)))
         (swap! id-index merge
                (reduce (fn [acc el] (assoc acc (:id el) {:file fname :text (:name el)}))
                        {} (filter #(when (map? %) (:id %)) (tree-seq :content :content procd))))))
     (doseq [[fname procd] @processed]
-      (let [mdfile (io/file (str outdir "/" fname ".md"))]
-        (println "Writing" fname)
+      (let [mdfile (io/file (str "contents/_" outname "/content.markdown"))]
+        (println "Convert" fname "->" mdfile)
         ;(spit (str outdir "/" fname ".dbgir") (with-out-str (pprint procd)))  ;debugging
         (io/make-parents mdfile)
         (with-open [mdwriter (io/writer mdfile)]
           (binding [*out* mdwriter]
-            (println (str"---\n" (yaml/generate-string frontmatter) "\n---\n"))
-            (mdprint procd {:xref-index @id-index :current-doc fname})))))
-    (spit (str outdir "/" outdir ".yml")
-          (yaml/generate-string [{:name outdir :items @toc :root outdir}]))))
+            (mdprint procd {:outname outname :xref-index @id-index :current-doc filename})))))))
