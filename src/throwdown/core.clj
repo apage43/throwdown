@@ -52,8 +52,12 @@
 
 (def kill-ids
   #{"conventions"
-    "api-reference-summary"
     "contributing"})
+
+(defn kill-table [el]
+  ;;Kill tables whose id ends with -summary, begins with couchbase
+  (if-let [id (:id (:attrs el))]
+    (re-matches #".*-summary" id)))
 
 (defn process [el]
   (cond
@@ -82,7 +86,8 @@
                         :alt (el-text (select-tagname el :title))
                         :href (-> (select-tagname el :imagedata) first :attrs :fileref) }
 
-               (:table :informaltable) (process-table el)
+               (:table :informaltable) 
+               (if (kill-table el) (clojure.core/println "Killing table!") (process-table el)) 
 
                :programlisting (merge (:attrs el)
                                       {:type :code
@@ -293,7 +298,8 @@
                                                       (doseq [e (:content el)] (mdprint e opts))
                                                       (pflush))) 
                                              "](" (xurl xitem (:linkend el) opts) ") "))
-                                 (print (str " **Couldn't resolve link tag: " (text-escape (:linkend el)) "** "))))
+                                 ;(print (str " **Couldn't resolve link tag: " (text-escape (:linkend el)) "** "))
+                                 (doseq [e (:content el)] (mdprint e opts))))
 
                       :table (print-mdtable el opts)
 
