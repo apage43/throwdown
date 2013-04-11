@@ -44,7 +44,7 @@
         head (first (select-tagname el :thead))
         rowlist (map (fn [r] (mapv #(map process (:content %)) (:content r))) (:content body))
         headrow (when head (mapv #(map process (:content %)) (-> head :content first :content)))]
-    (merge 
+    (merge
       {:type :table
        :head (or headrow (first rowlist))
        :rows (if headrow rowlist (rest rowlist))}
@@ -68,30 +68,30 @@
                   (merge (:attrs el)
                          {:type (:tag el)
                           :name (el-text (first (select-tagname el :title)))
-                          :content (map process (:content el))})) 
+                          :content (map process (:content el))}))
 
                :orderedlist {:type :olist
                              :content (map #(map process (:content %)) (:content el))}
                (:simplelist :itemizedlist) {:type :list
                              :content (map #(map process (:content %)) (:content el))}
 
-               :para {:type :para :content (map process (:content el))} 
+               :para {:type :para :content (map process (:content el))}
 
                :ulink {:type :link :text (el-text el) :href (-> el :attrs :url)}
                :xref [:xref (-> el :attrs :linkend)]
 
-               :link (merge {:type :xlink :content (map process (:content el))} (:attrs el)) 
+               :link (merge {:type :xlink :content (map process (:content el))} (:attrs el))
 
                (:figure :mediaobject) {:type :image
                         :alt (el-text (select-tagname el :title))
                         :href (-> (select-tagname el :imagedata) first :attrs :fileref) }
 
-               (:table :informaltable) 
-               (if (kill-table el) (clojure.core/println "Killing table!") (process-table el)) 
+               (:table :informaltable)
+               (if (kill-table el) (clojure.core/println "Killing table!") (process-table el))
 
                :programlisting (merge (:attrs el)
                                       {:type :code
-                                       :code (el-text-raw el)}) 
+                                       :code (el-text-raw el)})
 
                :remark {:type :comment :attrs (:attrs el)}
 
@@ -113,12 +113,12 @@
 
                :emphasis (case (-> el :attrs :role)
                            "bold" [:bold (el-text el)]
-                           [:em (el-text el)]) 
+                           [:em (el-text el)])
 
-               :title [:title (el-text el)] 
+               :title [:title (el-text el)]
 
                [:unknown-tag (:tag el)])
-   (string? el) (despace el) 
+   (string? el) (despace el)
    :else [:unknown-thing el]))
 
 (defn extract-toc [procd]
@@ -126,11 +126,11 @@
     (fn [pel]
       (if
         (and (map? pel)
-             (#{:section :chapter :book :appendix :preface} (:type pel))) 
+             (#{:section :chapter :book :appendix :preface} (:type pel)))
         (let [itms (filter #(and (map? %) (:name %)) (:content pel))]
-          (merge {:name (str (when (= :appendix (:type pel)) "Appendix: ") (:name pel)) 
+          (merge {:name (str (when (= :appendix (:type pel)) "Appendix: ") (:name pel))
                   :section (:id pel)}
-                 (when (seq itms) {:items itms}))) 
+                 (when (seq itms) {:items itms})))
         pel))
     procd))
 
@@ -143,10 +143,10 @@
   (string/escape s {\* "\\*"
                     \_ "\\_"
                     \# "\\#"
-                    \[ "\\[" 
+                    \[ "\\["
                     \] "\\]"}))
 
-(defn para-escape 
+(defn para-escape
   [s] (if-not (empty? s)
         (str
           (string/escape (subs s 0 1)
@@ -174,8 +174,8 @@
     (println (str (apply str (repeat in " ")) s))))
 
 (defn reindented-print [in s]
-  (let [lines (drop-while (partial = "") (string/split-lines s)) 
-        drop-indent (apply min 1000 (map #(count (take-while (partial = \space) %)) 
+  (let [lines (drop-while (partial = "") (string/split-lines s))
+        drop-indent (apply min 1000 (map #(count (take-while (partial = \space) %))
                                          (remove string/blank? lines)))
         lines (filter (partial not= "!NO-REINDENT") lines) ]
     (doseq [cl lines]
@@ -219,9 +219,9 @@
         (println
           (str bullet
                (subs
-                 (with-out-str 
+                 (with-out-str
                    (reindented-print
-                     (count bullet) 
+                     (count bullet)
                      (with-out-str
                        (doseq [ie el]
                          (mdprint ie (assoc opts :in-list true)))
@@ -244,10 +244,9 @@
         imagefile (java.io.File. file-parent (str "../../../common/" href))
         imagefile (if (.exists imagefile) imagefile (java.io.File. file-parent href))]
     (if (.exists imagefile)
-      (let [destname (str "/media/"
-                          (:outname opts) "/images/"
+      (let [destname (str (:outname opts) "/images/"
                           (.getName imagefile))
-            dest (io/file (str "templates" destname))]
+            dest (io/file (str "content/" destname))]
         (io/make-parents dest)
         (io/copy imagefile dest)
         (debug "Copied" imagefile "->" dest)
@@ -271,7 +270,7 @@
                       :div
                       (doseq [e (:content el)] (mdprint e (assoc opts :class (:class el))))
 
-                      :link (print (str " [" (text-escape (:text el)) "](" (:href el) ") ")) 
+                      :link (print (str " [" (text-escape (:text el)) "](" (:href el) ") "))
                       :image (println (str "\n![" (text-escape (:alt el)) "]("
                                            (collect-image (:href el) opts) ")\n"))
                       :list (print-list (:content el) (repeat " * ") opts)
@@ -286,7 +285,7 @@
                                                   (print-code (:code el) (:language el))))
                               (println))
 
-                      :para (println (with-out-str 
+                      :para (println (with-out-str
                                        (doseq [e (:content el)]
                                          (mdprint e (assoc opts :in-para true)))
                                        (println)))
@@ -296,18 +295,18 @@
                                  (print (str " [" (despace
                                                     (with-out-str
                                                       (doseq [e (:content el)] (mdprint e opts))
-                                                      (pflush))) 
+                                                      (pflush)))
                                              "](" (xurl xitem (:linkend el) opts) ") "))
                                  ;(print (str " **Couldn't resolve link tag: " (text-escape (:linkend el)) "** "))
                                  (doseq [e (:content el)] (mdprint e opts))))
 
                       :table (print-mdtable el opts)
 
-                      :inline-code (when (seq (:code el)) (print (str " `" (:code el) "` "))) 
+                      :inline-code (when (seq (:code el)) (print (str " `" (:code el) "` ")))
 
                       (doseq [e (:content el)]
                         (print (str " **Unhandled containery thing:** `" (:type el) "` "))
-                        (mdprint e opts)))) 
+                        (mdprint e opts))))
         (vector? el) (case (first el)
                        :em (print (str " *" (text-escape (second el)) "* "))
                        :bold (print (str " **" (text-escape (second el)) "** "))
@@ -321,14 +320,14 @@
                                (if (:class opts)
                                 (println (str "### " (second el) "\n"))
                                 (println (str ({:book "# "
-                                                :chapter "# "
+                                                :chapter "--8<-- CUT HERE --8<--\n# "
                                                 :section (let [d (or (:depth opts) 0)]
                                                            (if (> d 3)
                                                              "### "
                                                              "## "))
                                                 :preface "## "
                                                 :appendix "# Appendix: "} (:level opts))
-                                              (second el) "\n")))) 
+                                              (second el) "\n"))))
                        (print (str " **Unhandled:** `" (pr-str el) "` ")))
         (string? el) (print (text-escape el))
         :else (println "**Unhandled thing here**")))
@@ -337,30 +336,65 @@
   (let [xml-tree (xml/parse (StreamSource. file))]
     (process xml-tree)))
 
+(defn slugify [s]
+  (-> s
+      (string/replace #"[^A-Za-z0-9\.\-]+" "-")
+      string/lower-case))
+
+(defn make-slugger []
+  (let [slugged (atom {})]
+    (fn [s]
+      (let [prevmap (swap! slugged update-in [s] (fnil inc -1))
+            prev (prevmap s)
+            base (slugify s)]
+        (str base (when (pos? prev) "-" (inc prev)))))))
+
+(defn identify-split [lines]
+  (if-let [title-line (first (filter (partial re-matches #"^# .*") lines))]
+    (string/trim (subs title-line 1)) ;else
+    (-> "unknown-" gensym str)))
+
+(defn make-splits
+  "THIS IS SO HACKY :(
+   THIS WHOLE THING IS TOO HACKY :("
+  [with-cuts]
+  (let [lines (string/split-lines with-cuts)
+        chopped (->> lines
+                     (partition-by (partial = "--8<-- CUT HERE --8<--"))
+                     (filter (partial not= ["--8<-- CUT HERE --8<--"])))
+        slugger (make-slugger)]
+    (for [cut chopped]
+      {:title (slugger (identify-split cut))
+       :body (string/join "\n" cut)})))
+
 (defn -main
-  [filename outname]
-  (let [processed (atom {})
-        id-index (atom {})]
-    (reset! real-out *out*)
-    (try
-      (let [localopts (read-string (slurp ".throwdown-opts.clj"))]
-        (println "Found local options: " (pr-str localopts))
-        (reset! opts localopts))
-      (catch Exception e))
-    (let [f filename]
-      (println "Processing" f)
-      (let [file (io/file f)
-            fname (first (string/split (.getName file) #"\.")) 
-            procd (process-file file)]
-        (swap! processed assoc fname procd)
-        (swap! id-index merge
-               (reduce (fn [acc el] (assoc acc (:id el) {:file fname :text (:name el)}))
-                       {} (filter #(when (map? %) (:id %)) (tree-seq :content :content procd))))))
-    (doseq [[fname procd] @processed]
-      (let [mdfile (io/file (str "contents/_" outname "/content.markdown"))]
-        (println "Convert" fname "->" mdfile)
-        ;(spit (str outdir "/" fname ".dbgir") (with-out-str (pprint procd)))  ;debugging
-        (io/make-parents mdfile)
-        (with-open [mdwriter (io/writer mdfile)]
-          (binding [*out* mdwriter]
-            (mdprint procd {:outname outname :xref-index @id-index :current-doc filename})))))))
+  ([filename outname]
+      (let [processed (atom {})
+            id-index (atom {})]
+        (reset! real-out *out*)
+        (try
+          (let [localopts (read-string (slurp ".throwdown-opts.clj"))]
+            (println "Found local options: " (pr-str localopts))
+            (reset! opts localopts))
+          (catch Exception e))
+        (let [f filename]
+          (println "Processing" f)
+          (let [file (io/file f)
+                fname (first (string/split (.getName file) #"\."))
+                procd (process-file file)]
+            (swap! processed assoc fname procd)
+            (swap! id-index merge
+                   (reduce (fn [acc el] (assoc acc (:id el) {:file fname :text (:name el)}))
+                           {} (filter #(when (map? %) (:id %)) (tree-seq :content :content procd))))))
+        (doseq [[fname procd] @processed]
+          (let [mdstring (with-out-str (mdprint procd {:outname outname :xref-index @id-index :current-doc filename}))
+                sections (make-splits mdstring)]
+            (doseq [{:keys [title body]} sections]
+              (let [mdfile (io/file (str "content/" outname "/" title ".md"))]
+                (io/make-parents mdfile)
+                (spit mdfile body)))
+            (with-open [index-writer (io/writer (str "content/" outname "/index.erb"))]
+              (binding [*out* index-writer]
+                (println (str "---\ntitle: " outname "\n---\n"))
+                (doseq [{:keys [title]} sections]
+                  (println (str "<%= include_item 'content/" outname "/" title "' %>"))))))))))
