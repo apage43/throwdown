@@ -390,11 +390,11 @@
           (let [mdstring (with-out-str (mdprint procd {:outname outname :xref-index @id-index :current-doc filename}))
                 sections (make-splits mdstring)]
             (doseq [{:keys [title body]} sections]
-              (let [mdfile (io/file (str "content/" outname "/" title ".md"))]
+              (let [mdfile (io/file (str "content/" outname "/" title ".markdown"))]
                 (io/make-parents mdfile)
                 (spit mdfile body)))
             (with-open [index-writer (io/writer (str "content/" outname "/index.erb"))]
               (binding [*out* index-writer]
                 (println (str "---\ntitle: " outname "\n---\n"))
                 (doseq [{:keys [title]} sections]
-                  (println (str "<%= include_item 'content/" outname "/" title "' %>"))))))))))
+                  (println (str "<%= include_item '" outname "/" title "' %>"))))))))))
