@@ -250,7 +250,7 @@
         (io/make-parents dest)
         (io/copy imagefile dest)
         (debug "Copied" imagefile "->" dest)
-        destname)
+        (str "images/" (.getName imagefile)))
       (do (debug "Couldn't find image" href)
           "/media/bad.png"))))
 
