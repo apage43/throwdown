@@ -103,12 +103,16 @@
                ; Markdown will not render markdown in block-level elements, but
                ; these would be <div> classes. :/
                ; Non-titled section-like elements
-               (:example :warning :tip :note :formalpara :abstract :legalnotice :corpauthor)
+               (:example :warning :tip :note :formalpara :abstract :legalnotice
+                :corpauthor :quote :important :sidebar :caution :bridgehead
+                :footnote :informalfigure)
                {:type :div :class (:tag el) :content (map process (:content el))}
 
                ; inline code type elements
                ; Could affix <span> classes to these if we wanted
-               (:guilabel :command :filename :literal :option :methodname :replaceable :function :userinput)
+               (:guilabel :command :filename :literal :option :methodname
+                :replaceable :function :userinput :classname :guimenu :guibutton
+                :guimenuitem :screen :superscript :firstterm)
                {:type :inline-code :code (el-text el) :class (:tag el)}
 
                :emphasis (case (-> el :attrs :role)
@@ -305,7 +309,8 @@
                       :inline-code (when (seq (:code el)) (print (str " `" (:code el) "` ")))
 
                       (doseq [e (:content el)]
-                        (print (str " **Unhandled containery thing:** `" (:type el) "` "))
+                        (comment 
+                          (print (str " **Unhandled containery thing:** `" (:type el) "` ")))
                         (mdprint e opts))))
         (vector? el) (case (first el)
                        :em (print (str " *" (text-escape (second el)) "* "))
@@ -328,9 +333,9 @@
                                                 :preface "## "
                                                 :appendix "# Appendix: "} (:level opts))
                                               (second el) "\n"))))
-                       (print (str " **Unhandled:** `" (pr-str el) "` ")))
+                       (comment (print (str " **Unhandled:** `" (pr-str el) "` "))))
         (string? el) (print (text-escape el))
-        :else (println "**Unhandled thing here**")))
+        :else (comment (println "**Unhandled thing here**"))))
 
 (defn process-file [file]
   (let [xml-tree (xml/parse (StreamSource. file))]
