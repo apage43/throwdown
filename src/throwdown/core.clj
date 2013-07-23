@@ -331,7 +331,7 @@
                                                              "### "
                                                              "## "))
                                                 :preface "## "
-                                                :appendix "# Appendix: "} (:level opts))
+                                                :appendix "--8<-- CUT HERE --8<--\n# Appendix: "} (:level opts))
                                               (second el) "\n"))))
                        (comment (print (str " **Unhandled:** `" (pr-str el) "` "))))
         (string? el) (print (text-escape el))
@@ -344,6 +344,7 @@
 (defn slugify [s]
   (-> s
       (string/replace #"[^A-Za-z0-9\.\-]+" "-")
+      (string/replace #"^\." "")
       string/lower-case))
 
 (defn make-slugger []
