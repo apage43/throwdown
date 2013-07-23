@@ -108,12 +108,20 @@
                 :footnote :informalfigure)
                {:type :div :class (:tag el) :content (map process (:content el))}
 
-               ; inline code type elements
-               ; Could affix <span> classes to these if we wanted
-               (:guilabel :command :filename :literal :option :methodname
-                :replaceable :function :userinput :classname :guimenu :guibutton
-                :guimenuitem :screen :superscript :firstterm)
-               {:type :inline-code :code (el-text el) :class (:tag el)}
+                ; inline code type elements
+                ; Could affix <span> classes to these if we wanted
+                (:guilabel :command :filename :literal :option :methodname
+                           :replaceable :function :userinput :classname :guimenu :guibutton
+                           :guimenuitem :screen :superscript :firstterm)
+                (let [code (el-text el)
+                      tag (:tag el)
+                      inlineable? (not (or (.contains code "`")
+                                           (.contains code "\n")))]
+                  {:type (if inlineable?
+                           :inline-code
+                           :code)
+                   :code (el-text el)
+                   :class (:tag el)})
 
                :emphasis (case (-> el :attrs :role)
                            "bold" [:bold (el-text el)]
