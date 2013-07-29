@@ -241,10 +241,7 @@
                  (count bullet)))))
       (recur (rest el-list) (rest bulls)))))
 
-(defn xurl [xitem sid opts]
-  (str (if (not= (:file xitem) (:current-doc opts))
-         (str (:file xitem) ".html") "")
-       "#" sid))
+(defn xurl [xitem sid opts] (str "#" sid))
 
 (def real-out (atom *out*))
 (defn debug [& args]
