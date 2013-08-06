@@ -89,7 +89,7 @@
                (:table :informaltable)
                (if (kill-table el) (clojure.core/println "Killing table!") (process-table el))
 
-               :programlisting (merge (:attrs el)
+               (:screen :programlisting) (merge (:attrs el)
                                       {:type :code
                                        :code (el-text-raw el)})
 
@@ -112,7 +112,7 @@
                 ; Could affix <span> classes to these if we wanted
                 (:guilabel :command :filename :literal :option :methodname
                            :replaceable :function :userinput :classname :guimenu :guibutton
-                           :guimenuitem :screen :superscript :firstterm)
+                           :guimenuitem :superscript :firstterm)
                 (let [code (el-text el)
                       tag (:tag el)
                       inlineable? (not (or (.contains code "`")
